@@ -5,29 +5,17 @@ on:
     branches: [main, master]
 
 jobs:
-  apk:
+  build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
-      - name: Unzip the uploaded project (phone-friendly upload)
+      - name: Unzip the uploaded project
         run: |
           if ls *.zip >/dev/null 2>&1; then
             unzip -o *.zip
             cp -r JungXpakistan/. .
           fi
-
-      - uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: 17
-
-      - uses: android-actions/setup-android@v3
-
-      - name: Install Android SDK parts
-        run: |
-          yes | sdkmanager --licenses > /dev/null || true
-          sdkmanager "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
 
       - uses: chickensoft-games/setup-godot@v2
         with:
@@ -46,7 +34,18 @@ jobs:
           name: JungXpakistan-windows-exe
           path: build/JungXpakistan.exe
 
-      - name: Debug keystore + Godot editor settings
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK parts (SDK is preinstalled on the runner)
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
+
+      - name: Debug keystore and Godot editor settings
         run: |
           keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android -keystore "$HOME/debug.keystore" -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999
           mkdir -p "$HOME/.config/godot"
@@ -61,10 +60,8 @@ jobs:
           export/android/debug_keystore_pass = "android"
           SET
 
-      - name: Import and export APK
+      - name: Export Android APK
         run: |
-          mkdir -p build
-          godot --headless --import || true
           godot --headless --export-debug "Android" build/JungXpakistan.apk
 
       - uses: actions/upload-artifact@v4
