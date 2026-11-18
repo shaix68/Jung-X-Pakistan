@@ -1,1 +1,84 @@
+name: Build APK and Windows EXE
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
 
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Project ta alada folder e unzip kori, jate repo-r vitore duita project.godot na thake
+      - name: Prepare project
+        run: |
+          if ls *.zip >/dev/null 2>&1; then
+            mkdir -p "$RUNNER_TEMP/proj"
+            unzip -o -q *.zip -d "$RUNNER_TEMP/proj"
+          else
+            mkdir -p "$RUNNER_TEMP/proj"
+            rsync -a --exclude='.git' ./ "$RUNNER_TEMP/proj/"
+          fi
+          PROJ=$(dirname "$(find "$RUNNER_TEMP/proj" -name project.godot | head -n 1)")
+          echo "PROJ=$PROJ" >> "$GITHUB_ENV"
+          # repo root e export_presets.cfg thakle seta use hobe
+          if [ -f export_presets.cfg ]; then cp -f export_presets.cfg "$PROJ/export_presets.cfg"; fi
+          echo "Project folder: $PROJ"
+          ls -la "$PROJ"
+
+      - uses: chickensoft-games/setup-godot@v2
+        with:
+          version: 4.3.0
+          use-dotnet: false
+          include-templates: true
+
+      - name: Import project
+        working-directory: ${{ env.PROJ }}
+        run: godot --headless --import || true
+
+      - name: Export Windows EXE
+        working-directory: ${{ env.PROJ }}
+        run: |
+          mkdir -p build
+          godot --headless --export-release "Windows Desktop" build/JungXpakistan.exe
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JungXpakistan-windows-exe
+          path: ${{ env.PROJ }}/build/JungXpakistan.exe
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 17
+
+      - name: Install Android SDK parts
+        run: |
+          SDKM="$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager"
+          yes | "$SDKM" --licenses > /dev/null || true
+          "$SDKM" "platform-tools" "build-tools;34.0.0" "platforms;android-34" "cmake;3.10.2.4988404" "ndk;23.2.8568313"
+
+      - name: Debug keystore and Godot editor settings
+        run: |
+          keytool -keyalg RSA -genkeypair -alias androiddebugkey -keypass android -keystore "$HOME/debug.keystore" -storepass android -dname "CN=Android Debug,O=Android,C=US" -validity 9999
+          mkdir -p "$HOME/.config/godot"
+          cat > "$HOME/.config/godot/editor_settings-4.3.tres" <<SET
+          [gd_resource type="EditorSettings" format=3]
+
+          [resource]
+          export/android/android_sdk_path = "$ANDROID_HOME"
+          export/android/java_sdk_path = "$JAVA_HOME"
+          export/android/debug_keystore = "$HOME/debug.keystore"
+          export/android/debug_keystore_user = "androiddebugkey"
+          export/android/debug_keystore_pass = "android"
+          SET
+
+      - name: Export Android APK
+        working-directory: ${{ env.PROJ }}
+        run: godot --headless --export-debug "Android" build/JungXpakistan.apk
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: JungXpakistan-apk
+          path: ${{ env.PROJ }}/build/JungXpakistan.apk
