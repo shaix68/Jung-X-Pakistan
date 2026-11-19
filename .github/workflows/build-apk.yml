@@ -1,6 +1,7 @@
 # Builds an installable Android APK of JungXpakistan with GitHub Actions (free for public repos).
-# Put this file at  <repo root>/.github/workflows/build-apk.yml . The Godot project can be at the repo root OR in a
-# subfolder: the workflow finds project.godot by itself.
+# Put this file at  <repo root>/.github/workflows/build-apk.yml . The Godot project can be at the repo root, in a
+# subfolder, OR still inside a .zip file in the repo (the workflow unzips it). If several zips exist the highest
+# version name is used (e.g. ..._v5.zip beats ....zip).
 # Run: Actions tab > "Build Android APK" > Run workflow. Then download the "JungXpakistan-apk" artifact.
 # The APK is a DEBUG build signed with an auto-generated debug key (fine for installing on your own phone).
 name: Build Android APK
@@ -23,13 +24,25 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Find the Godot project
+      - name: Find the Godot project (extracted folder, or a .zip of it)
         run: |
           PF=$(find . -name project.godot -not -path "*/.godot/*" -not -path "./.git/*" | head -n 1)
           if [ -z "$PF" ]; then
-            echo "::error::project.godot not found in this repo. Upload the whole JungXpakistan project folder."
-            find . -maxdepth 3 -not -path "./.git/*" | head -50
-            exit 1
+            echo "No project.godot in the repo files, looking for a project .zip"
+            ZIP=$(find . -name "*.zip" -not -path "./.git/*" | sort -V | tail -n 1)
+            if [ -z "$ZIP" ]; then
+              echo "::error::No project.godot and no .zip found. Upload the JungXpakistan project (folder or zip) to the repo."
+              find . -maxdepth 3 -not -path "./.git/*" | head -50
+              exit 1
+            fi
+            echo "Using zip: $ZIP"
+            mkdir -p /tmp/gameproj
+            unzip -q -o "$ZIP" -d /tmp/gameproj
+            PF=$(find /tmp/gameproj -name project.godot -not -path "*/.godot/*" | head -n 1)
+            if [ -z "$PF" ]; then
+              echo "::error::The zip $ZIP has no project.godot inside."
+              exit 1
+            fi
           fi
           PROJ=$(cd "$(dirname "$PF")" && pwd)
           echo "PROJ=$PROJ" >> "$GITHUB_ENV"
